@@ -1,0 +1,319 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Random Picker</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111827;
+  color: white;
+  font-family: Arial, sans-serif;
+  padding: 20px;
+}
+
+.container {
+  width: 100%;
+  max-width: 500px;
+  text-align: center;
+  background: #1f2937;
+  padding: 35px 25px;
+  border-radius: 22px;
+  box-shadow: 0 15px 50px #0005;
+}
+
+h1 {
+  margin-top: 0;
+  font-size: 30px;
+}
+
+.subtitle {
+  color: #9ca3af;
+  margin-bottom: 30px;
+}
+
+.wheel-area {
+  margin: 35px auto;
+  padding: 30px 15px;
+  border: 3px solid #6366f1;
+  border-radius: 18px;
+  background: #111827;
+  position: relative;
+}
+
+.pointer {
+  color: #a5b4fc;
+  font-size: 25px;
+  margin-bottom: 10px;
+}
+
+#result {
+  font-size: 30px;
+  font-weight: bold;
+  min-height: 75px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow-wrap: anywhere;
+  color: #a5b4fc;
+}
+
+button {
+  border: none;
+  padding: 16px 35px;
+  border-radius: 50px;
+  background: #6366f1;
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+button:hover {
+  background: #4f46e5;
+  transform: scale(1.04);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+#status {
+  margin-top: 25px;
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+.count {
+  color: #a5b4fc;
+  margin-top: 15px;
+  font-size: 14px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <h1>🎯 Random Picker</h1>
+
+  <div class="subtitle">
+    Let fate decide!
+  </div>
+
+  <div class="wheel-area">
+    <div class="pointer">▼</div>
+    <div id="result">Loading...</div>
+  </div>
+
+  <button id="spinBtn" onclick="spin()" disabled>
+    SPIN
+  </button>
+
+  <div class="count" id="count">
+    Loading options...
+  </div>
+
+  <div id="status">
+    Connecting to Google Sheets...
+  </div>
+
+</div>
+
+<script>
+
+// ===================================
+// GOOGLE SHEET SETTINGS
+// ===================================
+
+// Paste your Google Sheet ID here
+const SHEET_ID = "1M7qQPXaLc9zJs1Jen34T1n2Ws-ZWiWL5aeMj5B7L9jU";
+
+// Paste your sheet tab GID here
+const SHEET_GID = "0";
+
+// Column to fetch
+const COLUMN = "A";
+
+// Is the first row a heading?
+const SKIP_HEADER = true;
+
+
+// ===================================
+// LOAD DATA FROM GOOGLE SHEETS
+// ===================================
+
+let options = [];
+let spinning = false;
+
+function loadSheetData() {
+
+  document.getElementById("status").innerText =
+    "Loading Google Sheet...";
+
+  const callbackName = "handleSheetData";
+
+  window[callbackName] = function(response) {
+
+    try {
+
+      if (response.status === "error") {
+        throw new Error("Google Sheets returned an error");
+      }
+
+      const rows = response.table.rows;
+
+      options = rows
+        .map(row => {
+          const cell = row.c[0];
+          return cell ? (cell.f || cell.v) : "";
+        })
+        .filter(value =>
+          value !== null &&
+          value !== undefined &&
+          String(value).trim() !== ""
+        )
+        .map(value => String(value).trim());
+
+      if (SKIP_HEADER) {
+        options.shift();
+      }
+
+      document.getElementById("count").innerText =
+        options.length + " options available";
+
+      document.getElementById("status").innerText =
+        "✓ Connected to Google Sheets";
+
+      document.getElementById("spinBtn").disabled =
+        options.length === 0;
+
+      document.getElementById("result").innerText =
+        options.length ? "Ready to spin!" : "No options found";
+
+    } catch(error) {
+
+      document.getElementById("status").innerText =
+        "Error reading sheet: " + error.message;
+
+      document.getElementById("result").innerText =
+        "Unable to load options";
+
+    }
+  };
+
+  const query =
+    `select ${COLUMN} where ${COLUMN} is not null`;
+
+  const url =
+    "https://docs.google.com/spreadsheets/d/" +
+    SHEET_ID +
+    "/gviz/tq?gid=" +
+    SHEET_GID +
+    "&tq=" +
+    encodeURIComponent(query) +
+    "&tqx=" +
+    encodeURIComponent(
+      "out:json;responseHandler:" + callbackName
+    );
+
+  const oldScript = document.getElementById("sheetScript");
+  if (oldScript) oldScript.remove();
+
+  const script = document.createElement("script");
+  script.id = "sheetScript";
+  script.src = url;
+
+  script.onerror = function() {
+    document.getElementById("status").innerText =
+      "Could not connect. Check sheet permissions and ID.";
+  };
+
+  document.body.appendChild(script);
+}
+
+
+// ===================================
+// RANDOM SELECTION
+// ===================================
+
+function randomIndex(max) {
+  const values = new Uint32Array(1);
+  crypto.getRandomValues(values);
+  return Math.floor((values[0] / 4294967296) * max);
+}
+
+
+// ===================================
+// SPIN ANIMATION
+// ===================================
+
+function spin() {
+
+  if (spinning || options.length === 0) return;
+
+  spinning = true;
+
+  const button = document.getElementById("spinBtn");
+  const result = document.getElementById("result");
+
+  button.disabled = true;
+  button.innerText = "SPINNING...";
+
+  const winner = randomIndex(options.length);
+
+  let ticks = 0;
+  const totalTicks = 25 + Math.floor(Math.random() * 15);
+
+  const timer = setInterval(() => {
+
+    const randomOption = randomIndex(options.length);
+
+    result.innerText = options[randomOption];
+
+    ticks++;
+
+    if (ticks >= totalTicks) {
+
+      clearInterval(timer);
+
+      result.innerText = "🎉 " + options[winner];
+
+      result.style.color = "#34d399";
+
+      button.disabled = false;
+      button.innerText = "SPIN AGAIN";
+
+      spinning = false;
+
+      document.getElementById("status").innerText =
+        "Winner selected!";
+
+    }
+
+  }, 100 + ticks * 3);
+}
+
+
+// Load sheet whenever website opens
+loadSheetData();
+
+</script>
+
+</body>
+</html>
