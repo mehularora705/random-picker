@@ -243,121 +243,164 @@ let options = [];
 let spinning = false;
 
 
-function loadSheetData() {
+// ===================================
+// LOAD GOOGLE SHEET IN BATCHES
+// ===================================
 
-  document.getElementById("status").innerText =
-    "Loading Google Sheet...";
+let requestCounter = 0;
 
-  const callbackName = "handleSheetData";
+function fetchSheetBatch(offset, limit) {
 
-  window[callbackName] = function(response) {
+  return new Promise((resolve, reject) => {
 
-    try {
+    const callbackName = "handleSheetBatch_" + (++requestCounter);
 
-      if (response.status === "error") {
-        throw new Error("Google Sheets returned an error");
+    const query =
+      `select A,B,C limit ${limit} offset ${offset}`;
+
+    const url =
+      "https://docs.google.com/spreadsheets/d/" +
+      SHEET_ID +
+      "/gviz/tq?gid=" +
+      SHEET_GID +
+      "&tq=" +
+      encodeURIComponent(query) +
+      "&tqx=" +
+      encodeURIComponent(
+        "out:json;responseHandler:" + callbackName
+      );
+
+    const script = document.createElement("script");
+
+    function cleanup() {
+      delete window[callbackName];
+      script.remove();
+    }
+
+    window[callbackName] = function(response) {
+
+      cleanup();
+
+      if (!response || response.status === "error") {
+        reject(new Error("Google Sheets batch request failed"));
+        return;
       }
 
-      // Get all rows returned by Google Sheets
-      const rows = response.table.rows;
+      resolve(response.table.rows || []);
 
-      const totalRows = rows.length;
+    };
 
-      // Extract all three columns
-      let allOptions = rows.map((row, index) => {
+    script.onerror = function() {
+      cleanup();
+      reject(new Error("Unable to connect to Google Sheets"));
+    };
 
-        const getValue = (columnIndex) => {
+    script.src = url;
+    document.body.appendChild(script);
 
-          const cell = row.c[columnIndex];
+  });
 
-          return cell
-            ? (cell.f ?? cell.v ?? "")
-            : "";
+}
 
-        };
 
-        return {
-          A: String(getValue(0)).trim(),
-          B: String(getValue(1)).trim(),
-          C: String(getValue(2)).trim(),
-          rowNumber: index + 2
-        };
+async function loadSheetData() {
 
-      });
+  const status = document.getElementById("status");
+  const count = document.getElementById("count");
+  const button = document.getElementById("spinBtn");
 
-      // Remove rows where Column A is genuinely empty
-      options = allOptions.filter(row => row.A !== "");
+  status.innerText = "Connecting to Google Sheets...";
+  count.innerText = "Loading options...";
+  button.disabled = true;
 
-      // Update count
-      document.getElementById("count").innerText =
-        options.length + " options available";
+  try {
 
-      // Diagnostic information
-      document.getElementById("status").innerText =
-        "Connected | Google returned: " + totalRows +
-        " rows | Valid options: " + options.length;
+    const batchSize = 50;
 
-      document.getElementById("spinBtn").disabled =
-        options.length === 0;
+    let offset = 0;
+    let allRows = [];
 
-      document.getElementById("result").innerText =
-        options.length ? "Ready to spin!" : "No options found";
+    // Fetch rows in batches of 50
+    while (true) {
 
-      document.getElementById("resultB").innerText = "---";
+      status.innerText =
+        "Fetching rows " + (offset + 1) +
+        " onwards...";
 
-      resetLink();
+      const rows = await fetchSheetBatch(offset, batchSize);
 
-      console.log("Total rows returned:", totalRows);
-      console.log("Valid options:", options.length);
-      console.log("Filtered rows:", allOptions.filter(row => row.A === ""));
+      if (rows.length === 0) {
+        break;
+      }
 
-    } catch(error) {
+      allRows = allRows.concat(rows);
 
-      document.getElementById("status").innerText =
-        "Error reading sheet: " + error.message;
+      offset += rows.length;
 
-      document.getElementById("result").innerText =
-        "Unable to load options";
-
-      console.error(error);
+      // Last batch reached
+      if (rows.length < batchSize) {
+        break;
+      }
 
     }
 
-  };
+    // Extract columns A, B and C
+    options = allRows.map(row => {
 
-  // Fetch all rows from columns A, B and C
-  // No WHERE condition
-  const query = "select A,B,C";
+      const getValue = (index) => {
 
-  const url =
-    "https://docs.google.com/spreadsheets/d/" +
-    SHEET_ID +
-    "/gviz/tq?gid=" +
-    SHEET_GID +
-    "&tq=" +
-    encodeURIComponent(query) +
-    "&tqx=" +
-    encodeURIComponent(
-      "out:json;responseHandler:" + callbackName
-    );
+        const cell = row.c[index];
 
-  const oldScript = document.getElementById("sheetScript");
+        return cell
+          ? (cell.f ?? cell.v ?? "")
+          : "";
 
-  if (oldScript) oldScript.remove();
+      };
 
-  const script = document.createElement("script");
+      return {
+        A: String(getValue(0)).trim(),
+        B: String(getValue(1)).trim(),
+        C: String(getValue(2)).trim()
+      };
 
-  script.id = "sheetScript";
-  script.src = url;
+    }).filter(row => row.A !== "");
 
-  script.onerror = function() {
+    // Update interface
+    count.innerText =
+      options.length + " options available";
 
-    document.getElementById("status").innerText =
-      "Could not connect. Check sheet permissions and ID.";
+    status.innerText =
+      "✓ Connected | Google returned: " +
+      allRows.length +
+      " rows | Valid options: " +
+      options.length;
 
-  };
+    document.getElementById("result").innerText =
+      options.length ? "Ready to spin!" : "No options found";
 
-  document.body.appendChild(script);
+    document.getElementById("resultB").innerText = "---";
+
+    resetLink();
+
+    button.disabled = options.length === 0;
+
+    console.log("Total rows fetched:", allRows.length);
+    console.log("Valid options:", options.length);
+
+  } catch(error) {
+
+    status.innerText = "Error: " + error.message;
+
+    count.innerText = "Unable to load options";
+
+    document.getElementById("result").innerText =
+      "Unable to load options";
+
+    button.disabled = true;
+
+    console.error(error);
+
+  }
 
 }
 
