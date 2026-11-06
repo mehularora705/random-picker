@@ -259,16 +259,17 @@ function fetchSheetBatch(offset, limit) {
       `select A,B,C limit ${limit} offset ${offset}`;
 
     const url =
-      "https://docs.google.com/spreadsheets/d/" +
-      SHEET_ID +
-      "/gviz/tq?gid=" +
-      SHEET_GID +
-      "&tq=" +
-      encodeURIComponent(query) +
-      "&tqx=" +
-      encodeURIComponent(
-        "out:json;responseHandler:" + callbackName
-      );
+  "https://docs.google.com/spreadsheets/d/" +
+  SHEET_ID +
+  "/gviz/tq?gid=" +
+  SHEET_GID +
+  "&headers=1" +
+  "&tq=" +
+  encodeURIComponent(query) +
+  "&tqx=" +
+  encodeURIComponent(
+    "out:json;responseHandler:" + callbackName
+  );
 
     const script = document.createElement("script");
 
