@@ -44,12 +44,11 @@ h1 {
 }
 
 .wheel-area {
-  margin: 35px auto;
+  margin: 35px auto 20px;
   padding: 30px 15px;
   border: 3px solid #6366f1;
   border-radius: 18px;
   background: #111827;
-  position: relative;
 }
 
 .pointer {
@@ -67,6 +66,62 @@ h1 {
   align-items: center;
   overflow-wrap: anywhere;
   color: #a5b4fc;
+}
+
+.details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 20px auto 25px;
+}
+
+.detail-box {
+  background: #111827;
+  border: 2px solid #374151;
+  border-radius: 14px;
+  padding: 18px 12px;
+  min-width: 0;
+}
+
+.detail-label {
+  color: #9ca3af;
+  font-size: 13px;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.detail-value {
+  color: #a5b4fc;
+  font-size: 19px;
+  font-weight: bold;
+  min-height: 45px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-wrap: anywhere;
+}
+
+#resultC {
+  display: inline-block;
+  background: #6366f1;
+  color: white;
+  padding: 10px 14px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: bold;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+#resultC.active {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+#resultC.active:hover {
+  background: #4f46e5;
 }
 
 button {
@@ -116,9 +171,36 @@ button:disabled {
     Let fate decide!
   </div>
 
+  <!-- COLUMN A: MAIN RESULT -->
+
   <div class="wheel-area">
     <div class="pointer">▼</div>
     <div id="result">Loading...</div>
+  </div>
+
+  <!-- COLUMN B AND C RESULTS -->
+
+  <div class="details">
+
+    <div class="detail-box">
+      <div class="detail-label">Column B</div>
+      <div class="detail-value" id="resultB">---</div>
+    </div>
+
+    <div class="detail-box">
+      <div class="detail-label">Column C</div>
+
+      <div class="detail-value">
+        <a id="resultC"
+           href="#"
+           target="_blank"
+           rel="noopener noreferrer">
+          🔗 Open Link
+        </a>
+      </div>
+
+    </div>
+
   </div>
 
   <button id="spinBtn" onclick="spin()" disabled>
@@ -135,20 +217,19 @@ button:disabled {
 
 </div>
 
+
 <script>
 
 // ===================================
 // GOOGLE SHEET SETTINGS
 // ===================================
 
-// Paste your Google Sheet ID here
 const SHEET_ID = "1M7qQPXaLc9zJs1Jen34T1n2Ws-ZWiWL5aeMj5B7L9jU";
 
-// Paste your sheet tab GID here
 const SHEET_GID = "0";
 
-// Column to fetch
-const COLUMN = "A";
+// Fetch columns A, B and C
+const COLUMNS = "A,B,C";
 
 // Is the first row a heading?
 const SKIP_HEADER = true;
@@ -178,18 +259,28 @@ function loadSheetData() {
 
       const rows = response.table.rows;
 
-      options = rows
-        .map(row => {
-          const cell = row.c[0];
-          return cell ? (cell.f || cell.v) : "";
-        })
-        .filter(value =>
-          value !== null &&
-          value !== undefined &&
-          String(value).trim() !== ""
-        )
-        .map(value => String(value).trim());
+      // Extract A, B and C from the same row
+      options = rows.map(row => {
 
+        const getValue = (index) => {
+
+          const cell = row.c[index];
+
+          return cell
+            ? (cell.f ?? cell.v ?? "")
+            : "";
+
+        };
+
+        return {
+          A: String(getValue(0)).trim(),
+          B: String(getValue(1)).trim(),
+          C: String(getValue(2)).trim()
+        };
+
+      }).filter(row => row.A !== "");
+
+      // Skip header
       if (SKIP_HEADER) {
         options.shift();
       }
@@ -206,6 +297,10 @@ function loadSheetData() {
       document.getElementById("result").innerText =
         options.length ? "Ready to spin!" : "No options found";
 
+      document.getElementById("resultB").innerText = "---";
+
+      resetLink();
+
     } catch(error) {
 
       document.getElementById("status").innerText =
@@ -215,10 +310,12 @@ function loadSheetData() {
         "Unable to load options";
 
     }
+
   };
 
+  // Google Sheets query
   const query =
-    `select ${COLUMN} where ${COLUMN} is not null`;
+    `select ${COLUMNS} where A is not null`;
 
   const url =
     "https://docs.google.com/spreadsheets/d/" +
@@ -233,18 +330,23 @@ function loadSheetData() {
     );
 
   const oldScript = document.getElementById("sheetScript");
+
   if (oldScript) oldScript.remove();
 
   const script = document.createElement("script");
+
   script.id = "sheetScript";
   script.src = url;
 
   script.onerror = function() {
+
     document.getElementById("status").innerText =
       "Could not connect. Check sheet permissions and ID.";
+
   };
 
   document.body.appendChild(script);
+
 }
 
 
@@ -253,9 +355,30 @@ function loadSheetData() {
 // ===================================
 
 function randomIndex(max) {
+
   const values = new Uint32Array(1);
+
   crypto.getRandomValues(values);
-  return Math.floor((values[0] / 4294967296) * max);
+
+  return Math.floor(
+    (values[0] / 4294967296) * max
+  );
+
+}
+
+
+// ===================================
+// RESET COLUMN C LINK
+// ===================================
+
+function resetLink() {
+
+  const link = document.getElementById("resultC");
+
+  link.removeAttribute("href");
+  link.classList.remove("active");
+  link.innerText = "🔗 Open Link";
+
 }
 
 
@@ -272,19 +395,30 @@ function spin() {
   const button = document.getElementById("spinBtn");
   const result = document.getElementById("result");
 
+  const resultB = document.getElementById("resultB");
+
   button.disabled = true;
   button.innerText = "SPINNING...";
 
-  const winner = randomIndex(options.length);
+  // Clear previous results
+  resultB.innerText = "---";
+  resetLink();
+
+  result.style.color = "#a5b4fc";
+
+  // Select one complete row
+  const winner = options[randomIndex(options.length)];
 
   let ticks = 0;
+
   const totalTicks = 25 + Math.floor(Math.random() * 15);
 
   const timer = setInterval(() => {
 
-    const randomOption = randomIndex(options.length);
+    // Random animation using Column A
+    const randomOption = options[randomIndex(options.length)];
 
-    result.innerText = options[randomOption];
+    result.innerText = randomOption.A;
 
     ticks++;
 
@@ -292,9 +426,30 @@ function spin() {
 
       clearInterval(timer);
 
-      result.innerText = "🎉 " + options[winner];
+      // Display winning Column A value
+      result.innerText = "🎉 " + winner.A;
 
       result.style.color = "#34d399";
+
+      // Display corresponding Column B
+      resultB.innerText = winner.B || "---";
+
+      // Display corresponding Column C as clickable link
+      const link = document.getElementById("resultC");
+
+      if (winner.C && /^https?:\/\//i.test(winner.C)) {
+
+        link.href = winner.C;
+        link.innerText = "🔗 Open Link";
+        link.classList.add("active");
+
+      } else {
+
+        link.innerText = winner.C || "No Link";
+        link.removeAttribute("href");
+        link.classList.remove("active");
+
+      }
 
       button.disabled = false;
       button.innerText = "SPIN AGAIN";
@@ -307,10 +462,14 @@ function spin() {
     }
 
   }, 100 + ticks * 3);
+
 }
 
 
-// Load sheet whenever website opens
+// ===================================
+// LOAD SHEET WHEN WEBSITE OPENS
+// ===================================
+
 loadSheetData();
 
 </script>
