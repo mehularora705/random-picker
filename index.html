@@ -232,7 +232,7 @@ const SHEET_GID = "0";
 const COLUMNS = "A,B,C";
 
 // Is the first row a heading?
-const SKIP_HEADER = true;
+const SKIP_HEADER = false;
 
 
 // ===================================
@@ -241,6 +241,7 @@ const SKIP_HEADER = true;
 
 let options = [];
 let spinning = false;
+
 
 function loadSheetData() {
 
@@ -257,14 +258,17 @@ function loadSheetData() {
         throw new Error("Google Sheets returned an error");
       }
 
+      // Get all rows returned by Google Sheets
       const rows = response.table.rows;
 
-      // Extract A, B and C from the same row
-      options = rows.map(row => {
+      const totalRows = rows.length;
 
-        const getValue = (index) => {
+      // Extract all three columns
+      let allOptions = rows.map((row, index) => {
 
-          const cell = row.c[index];
+        const getValue = (columnIndex) => {
+
+          const cell = row.c[columnIndex];
 
           return cell
             ? (cell.f ?? cell.v ?? "")
@@ -275,21 +279,23 @@ function loadSheetData() {
         return {
           A: String(getValue(0)).trim(),
           B: String(getValue(1)).trim(),
-          C: String(getValue(2)).trim()
+          C: String(getValue(2)).trim(),
+          rowNumber: index + 2
         };
 
-      }).filter(row => row.A !== "");
+      });
 
-      // Skip header
-      if (SKIP_HEADER) {
-        options.shift();
-      }
+      // Remove rows where Column A is genuinely empty
+      options = allOptions.filter(row => row.A !== "");
 
+      // Update count
       document.getElementById("count").innerText =
         options.length + " options available";
 
+      // Diagnostic information
       document.getElementById("status").innerText =
-        "✓ Connected to Google Sheets";
+        "Connected | Google returned: " + totalRows +
+        " rows | Valid options: " + options.length;
 
       document.getElementById("spinBtn").disabled =
         options.length === 0;
@@ -301,6 +307,10 @@ function loadSheetData() {
 
       resetLink();
 
+      console.log("Total rows returned:", totalRows);
+      console.log("Valid options:", options.length);
+      console.log("Filtered rows:", allOptions.filter(row => row.A === ""));
+
     } catch(error) {
 
       document.getElementById("status").innerText =
@@ -309,13 +319,15 @@ function loadSheetData() {
       document.getElementById("result").innerText =
         "Unable to load options";
 
+      console.error(error);
+
     }
 
   };
 
-  // Google Sheets query
-  const query =
-    `select ${COLUMNS} where A is not null`;
+  // Fetch all rows from columns A, B and C
+  // No WHERE condition
+  const query = "select A,B,C";
 
   const url =
     "https://docs.google.com/spreadsheets/d/" +
@@ -348,6 +360,7 @@ function loadSheetData() {
   document.body.appendChild(script);
 
 }
+
 
 
 // ===================================
